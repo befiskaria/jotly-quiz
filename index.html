@@ -366,9 +366,8 @@
 
 <script>
 // ── Config ─────────────────────────────────────────────────────────────────
-// REPLACE these with your actual Supabase values
-const SUPABASE_URL      = "https://jdzinkfzxnqlhpbilmyo.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable__jqWDlwggQ2buzHhBna7lQ_udBeWB48";
+const val SUPABASE_URL      = "https://jdzinkfzxnqlhpbilmyo.supabase.co"
+const val SUPABASE_ANON_KEY = "sb_publishable__jqWDlwggQ2buzHhBna7lQ_udBeWB48"
 
 const TBL_SESSIONS     = "quiz_sessions";
 const TBL_PARTICIPANTS = "quiz_participants";
@@ -491,7 +490,7 @@ function showError(el, msg) {
 // ── Polling loop ───────────────────────────────────────────────────────────
 function startPolling() {
   poll(); // immediate first tick
-  pollTimer = setInterval(poll, 1500);
+  pollTimer = setInterval(poll, 800);
 }
 
 function stopPolling() {
