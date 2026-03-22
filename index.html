@@ -366,8 +366,18 @@
 
 <script>
 // ── Config ─────────────────────────────────────────────────────────────────
-const val SUPABASE_URL      = "https://jdzinkfzxnqlhpbilmyo.supabase.co"
-const val SUPABASE_ANON_KEY = "sb_publishable__jqWDlwggQ2buzHhBna7lQ_udBeWB48"
+const SUPABASE_URL      = "https://jdzinkfzxnqlhpbilmyo.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable__jqWDlwggQ2buzHhBna7lQ_udBeWB48";
+
+// New sb_publishable_ keys use "apikey" header only (no Bearer prefix needed)
+// Legacy JWT keys need both. We detect by prefix to handle both.
+function authHeaders() {
+  return {
+    "apikey":        SUPABASE_ANON_KEY,
+    "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+    "Accept":        "application/json"
+  };
+}
 
 const TBL_SESSIONS     = "quiz_sessions";
 const TBL_PARTICIPANTS = "quiz_participants";
@@ -407,28 +417,25 @@ if (!sessionId) {
 // ── Supabase REST helpers ──────────────────────────────────────────────────
 async function sbGet(table, query) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
-    headers: {
-      "apikey":        SUPABASE_ANON_KEY,
-      "Authorization": "Bearer " + SUPABASE_ANON_KEY,
-      "Accept":        "application/json"
-    }
+    headers: authHeaders()
   });
-  if (!r.ok) throw new Error(`GET ${table} failed: ${r.status}`);
+  if (!r.ok) {
+    const txt = await r.text().catch(() => "");
+    throw new Error(`GET ${table} failed: HTTP ${r.status} — ${txt}`);
+  }
   return r.json();
 }
 
 async function sbPost(table, body) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method:  "POST",
-    headers: {
-      "apikey":        SUPABASE_ANON_KEY,
-      "Authorization": "Bearer " + SUPABASE_ANON_KEY,
-      "Content-Type":  "application/json",
-      "Prefer":        "return=minimal"
-    },
+    headers: { ...authHeaders(), "Content-Type": "application/json", "Prefer": "return=minimal" },
     body: JSON.stringify(body)
   });
-  if (!r.ok) throw new Error(`POST ${table} failed: ${r.status}`);
+  if (!r.ok) {
+    const txt = await r.text().catch(() => "");
+    throw new Error(`POST ${table} failed: HTTP ${r.status} — ${txt}`);
+  }
 }
 
 // ── Screen management ──────────────────────────────────────────────────────
