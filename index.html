@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Jotly Quiz</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0f0f13;
+    --surface: #1a1a24;
+    --card:    #22222f;
+    --primary: #7c6af7;
+    --text:    #f0f0f8;
+    --sub:     #9090a8;
+    --green:   #34c759;
+    --red:     #ff453a;
+    --amber:   #f59e0b;
+    --radius:  14px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  #app {
+    width: 100%;
+    max-width: 480px;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0;
+  }
+
+  /* ── Screens ── */
+  .screen { display: none; flex-direction: column; gap: 20px; }
+  .screen.active { display: flex; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+
+  /* ── Typography ── */
+  h1 { font-size: 28px; font-weight: 700; }
+  h2 { font-size: 20px; font-weight: 600; }
+  h3 { font-size: 16px; font-weight: 600; }
+  .sub { color: var(--sub); font-size: 13px; }
+  .emoji-big { font-size: 64px; text-align: center; line-height: 1.2; }
+  .center { text-align: center; }
+
+  /* ── Input ── */
+  input[type="text"] {
+    width: 100%;
+    background: var(--card);
+    border: 1.5px solid #333344;
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 16px;
+    padding: 14px 16px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  input[type="text"]:focus { border-color: var(--primary); }
+  input[type="text"]::placeholder { color: var(--sub); }
+
+  /* ── Buttons ── */
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active { opacity: .8; transform: scale(.98); }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-outline  {
+    background: transparent;
+    color: var(--sub);
+    border: 1.5px solid #333344;
+  }
+  .btn-download { background: var(--green); color: #fff; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── Session code ── */
+  .session-code {
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: 8px;
+    color: var(--primary);
+    text-align: center;
+  }
+
+  /* ── Timer bar ── */
+  .timer-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .timer-bar-bg {
+    flex: 1;
+    height: 8px;
+    background: #333344;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .timer-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .9s linear, background-color .3s;
+    background: var(--green);
+  }
+  .timer-num {
+    font-size: 15px;
+    font-weight: 700;
+    width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-progress { font-size: 12px; color: var(--sub); width: 40px; }
+
+  /* ── Answer buttons ── */
+  .options { display: flex; flex-direction: column; gap: 10px; }
+  .opt-btn {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 16px 20px;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 500;
+    color: #fff;
+    cursor: pointer;
+    text-align: left;
+    transition: opacity .15s, transform .1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .opt-btn:active { opacity: .85; transform: scale(.98); }
+  .opt-btn:disabled { cursor: not-allowed; opacity: .7; }
+  .opt-letter {
+    width: 28px; height: 28px; min-width: 28px;
+    background: rgba(255,255,255,.2);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .opt-text { flex: 1; line-height: 1.35; }
+
+  .opt-colors { /* defined per option */ }
+  .color-0 { background: #3b82f6; }
+  .color-1 { background: #ef4444; }
+  .color-2 { background: #f59e0b; }
+  .color-3 { background: #22c55e; }
+  .color-4 { background: #8b5cf6; }
+
+  /* ── Reveal styling ── */
+  .opt-btn.correct  { background: var(--green) !important; }
+  .opt-btn.wrong    { opacity: .45 !important; }
+  .opt-btn.my-wrong { background: var(--red)  !important; opacity: 1 !important; }
+
+  /* ── Leaderboard ── */
+  .lb-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: var(--card);
+  }
+  .lb-row.me { background: rgba(124,106,247,.18); }
+  .lb-medal { font-size: 22px; width: 30px; text-align: center; }
+  .lb-rank  { font-size: 13px; color: var(--sub); width: 30px; text-align: center; }
+  .lb-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--primary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .lb-name { flex: 1; font-size: 14px; font-weight: 500; }
+  .lb-score { font-size: 16px; font-weight: 700; }
+
+  /* ── Waiting dots animation ── */
+  @keyframes dot { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+  .dots span { animation: dot 1.2s infinite; }
+  .dots span:nth-child(2) { animation-delay: .2s; }
+  .dots span:nth-child(3) { animation-delay: .4s; }
+
+  /* ── Spinner ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid #333344;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    margin: 0 auto;
+  }
+
+  /* ── Answered waiting ── */
+  .answered-icon { font-size: 56px; text-align: center; }
+
+  /* ── Error ── */
+  .error-msg {
+    background: rgba(255,69,58,.12);
+    border: 1px solid rgba(255,69,58,.3);
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: var(--red);
+    font-size: 13px;
+  }
+
+  /* ── Divider ── */
+  hr { border: none; border-top: 1px solid #222233; }
+
+  /* ── Badge ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(124,106,247,.18);
+    color: var(--primary);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* ── Result banner ── */
+  .result-banner {
+    border-radius: var(--radius);
+    padding: 20px;
+    text-align: center;
+  }
+  .result-banner.correct-bg { background: rgba(52,199,89,.15); }
+  .result-banner.wrong-bg   { background: rgba(255,69,58,.12); }
+  .result-banner.skip-bg    { background: rgba(144,144,168,.1); }
+  .result-answer {
+    background: rgba(52,199,89,.18);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ COVER: enter nickname ══════════════════════════════════════════════ -->
+  <div id="screen-cover" class="screen active">
+    <div class="center">
+      <div class="emoji-big">🧠</div>
+      <h1 style="margin-top:12px">Jotly Quiz</h1>
+      <p class="sub" style="margin-top:6px" id="cover-code"></p>
+    </div>
+    <div class="card" style="gap:14px;display:flex;flex-direction:column">
+      <h3>Enter your nickname</h3>
+      <input type="text" id="nickname-input" placeholder="e.g. Alex 🎉" maxlength="20" autocomplete="off" />
+      <div id="cover-error" class="error-msg" style="display:none"></div>
+      <button class="btn btn-primary" id="join-btn" onclick="joinQuiz()">Join Quiz</button>
+    </div>
+  </div>
+
+  <!-- ══ LOBBY: waiting for host ════════════════════════════════════════════ -->
+  <div id="screen-lobby" class="screen">
+    <div class="center">
+      <div class="spinner" style="margin-bottom:20px"></div>
+      <h2>Waiting for host<span class="dots"><span>.</span><span>.</span><span>.</span></span></h2>
+      <p class="sub" style="margin-top:8px">You're in! Sit tight.</p>
+    </div>
+    <div class="card center">
+      <p class="sub" style="margin-bottom:8px">Your nickname</p>
+      <div class="badge" id="lobby-nick"></div>
+    </div>
+    <div class="card center">
+      <p class="sub" style="margin-bottom:4px">Session</p>
+      <div class="session-code" id="lobby-session"></div>
+    </div>
+  </div>
+
+  <!-- ══ QUESTION: live question + timer ════════════════════════════════════ -->
+  <div id="screen-question" class="screen">
+    <div>
+      <div class="timer-wrap">
+        <span class="q-progress" id="q-progress"></span>
+        <div class="timer-bar-bg"><div class="timer-bar" id="timer-bar"></div></div>
+        <span class="timer-num" id="timer-num"></span>
+      </div>
+    </div>
+    <div class="card">
+      <p id="q-text" style="font-size:18px;font-weight:600;line-height:1.45"></p>
+    </div>
+    <div class="options" id="options-list"></div>
+  </div>
+
+  <!-- ══ ANSWERED: submitted, waiting for reveal ════════════════════════════ -->
+  <div id="screen-answered" class="screen">
+    <div class="center" style="gap:14px">
+      <div class="answered-icon" id="answered-icon">✅</div>
+      <h2 id="answered-msg">Answer submitted!</h2>
+      <p class="sub" id="answered-sub">Waiting for the host to reveal the answer…</p>
+    </div>
+  </div>
+
+  <!-- ══ REVEAL: correct/wrong result ══════════════════════════════════════ -->
+  <div id="screen-reveal" class="screen">
+    <div id="result-banner" class="result-banner">
+      <div style="font-size:52px" id="result-emoji"></div>
+      <h1 style="margin-top:8px" id="result-label"></h1>
+    </div>
+    <div id="correct-answer-box" class="result-answer" style="display:none">
+      <p class="sub" style="margin-bottom:4px">✅ Correct answer</p>
+      <p id="correct-answer-text" style="font-size:15px;font-weight:600"></p>
+    </div>
+    <p class="sub center">Waiting for next question…</p>
+  </div>
+
+  <!-- ══ LEADERBOARD: final scores ══════════════════════════════════════════ -->
+  <div id="screen-leaderboard" class="screen">
+    <div class="center">
+      <div style="font-size:52px">🏆</div>
+      <h1 style="margin-top:8px">Final Scores</h1>
+      <p class="sub" style="margin-top:6px" id="lb-my-rank"></p>
+    </div>
+    <div id="lb-list" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div id="download-section" style="display:none;flex-direction:column;gap:10px">
+      <hr />
+      <button class="btn btn-download" onclick="downloadResults()">
+        ⬇️ Download Q&amp;A + My Score
+      </button>
+    </div>
+    <button class="btn btn-outline" onclick="location.reload()">Leave Quiz</button>
+  </div>
+
+  <!-- ══ ENDED ══════════════════════════════════════════════════════════════ -->
+  <div id="screen-ended" class="screen">
+    <div class="center" style="gap:14px">
+      <div class="emoji-big">👋</div>
+      <h1>Quiz Ended</h1>
+      <p class="sub">Thanks for playing!</p>
+    </div>
+    <button class="btn btn-outline" onclick="location.reload()">Close</button>
+  </div>
+
+</div>
+
+<script>
+// ── Config ─────────────────────────────────────────────────────────────────
+// REPLACE these with your actual Supabase values
+const SUPABASE_URL      = "https://jdzinkfzxnqlhpbilmyo.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable__jqWDlwggQ2buzHhBna7lQ_udBeWB48";
+
+const TBL_SESSIONS     = "quiz_sessions";
+const TBL_PARTICIPANTS = "quiz_participants";
+const TBL_ANSWERS      = "quiz_answers";
+
+// ── State ──────────────────────────────────────────────────────────────────
+let sessionId      = "";
+let nickname       = "";
+let phase          = "cover";    // cover | lobby | question | answered | reveal | leaderboard | ended
+let pollTimer      = null;
+let countdownTimer = null;
+let timerTotal     = 20;
+let timerLeft      = 0;
+let currentQId     = "";
+let currentOptions = [];
+let correctIndex   = -1;
+let selectedIndex  = -1;
+let allQuestions   = [];         // [{id, text, options[], answerIndex}]  built up during session
+let myAnswers      = {};         // { questionId: answerIndex }
+let myScore        = 0;
+let totalQs        = 0;
+let allowDownload  = false;
+let leaderboard    = [];
+let setName        = "Quiz";
+
+// ── Read session ID from URL ───────────────────────────────────────────────
+const params = new URLSearchParams(window.location.search);
+sessionId = (params.get("session") || "").toUpperCase().trim();
+
+if (!sessionId) {
+  document.querySelector("#cover-code").textContent = "No session code found in URL.";
+  document.querySelector("#join-btn").disabled = true;
+} else {
+  document.querySelector("#cover-code").textContent = "Session: " + sessionId;
+}
+
+// ── Supabase REST helpers ──────────────────────────────────────────────────
+async function sbGet(table, query) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+    headers: {
+      "apikey":        SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+      "Accept":        "application/json"
+    }
+  });
+  if (!r.ok) throw new Error(`GET ${table} failed: ${r.status}`);
+  return r.json();
+}
+
+async function sbPost(table, body) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method:  "POST",
+    headers: {
+      "apikey":        SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+      "Content-Type":  "application/json",
+      "Prefer":        "return=minimal"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(`POST ${table} failed: ${r.status}`);
+}
+
+// ── Screen management ──────────────────────────────────────────────────────
+function showScreen(name) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById("screen-" + name).classList.add("active");
+  phase = name;
+}
+
+// ── Join quiz ──────────────────────────────────────────────────────────────
+async function joinQuiz() {
+  const input = document.getElementById("nickname-input");
+  const err   = document.getElementById("cover-error");
+  nickname = input.value.trim();
+
+  if (!nickname) { showError(err, "Please enter a nickname."); return; }
+  if (!sessionId){ showError(err, "No session ID in URL."); return; }
+
+  const btn = document.getElementById("join-btn");
+  btn.disabled = true; btn.textContent = "Joining…";
+  err.style.display = "none";
+
+  try {
+    // Check session exists first
+    const sessions = await sbGet(TBL_SESSIONS, `session_id=eq.${sessionId}&select=state,payload&limit=1`);
+    if (!sessions.length) {
+      showError(err, "Session not found. Check the code and try again.");
+      btn.disabled = false; btn.textContent = "Join Quiz"; return;
+    }
+    const sessionState = sessions[0].state;
+    if (sessionState === "ended") {
+      showError(err, "This quiz has already ended."); btn.disabled = false; btn.textContent = "Join Quiz"; return;
+    }
+
+    // Capture allow_download from payload right away
+    const pl = sessions[0].payload || {};
+    allowDownload = pl.allow_download || false;
+    setName = pl.set_name || "Quiz";
+
+    // Register participant
+    await sbPost(TBL_PARTICIPANTS, { session_id: sessionId, nickname });
+
+    // Show lobby
+    document.getElementById("lobby-nick").textContent = nickname;
+    document.getElementById("lobby-session").textContent = sessionId;
+    showScreen("lobby");
+    startPolling();
+  } catch(e) {
+    showError(err, "Could not join: " + e.message);
+    btn.disabled = false; btn.textContent = "Join Quiz";
+  }
+}
+
+function showError(el, msg) {
+  el.textContent = msg;
+  el.style.display = "block";
+}
+
+// ── Polling loop ───────────────────────────────────────────────────────────
+function startPolling() {
+  poll(); // immediate first tick
+  pollTimer = setInterval(poll, 1500);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function poll() {
+  try {
+    const rows = await sbGet(TBL_SESSIONS, `session_id=eq.${sessionId}&select=state,payload&limit=1`);
+    if (!rows.length) return;
+    const { state, payload } = rows[0];
+    handleState(state, payload || {});
+  } catch(e) {
+    console.warn("Poll error:", e.message);
+  }
+}
+
+function handleState(state, pl) {
+  switch (state) {
+
+    case "lobby":
+      allowDownload = pl.allow_download || false;
+      setName = pl.set_name || "Quiz";
+      totalQs = pl.total_questions || 0;
+      // Pre-load question list if available
+      if (pl.question_list && allQuestions.length === 0) {
+        allQuestions = pl.question_list.map(q => ({
+          id: q.id, text: q.text, options: q.options, answerIndex: -1
+        }));
+      }
+      if (phase !== "lobby") showScreen("lobby");
+      break;
+
+    case "question": {
+      const qId = pl.question_id || "";
+      if (qId === currentQId && phase === "question") break; // same question, no change
+      if (qId === currentQId && phase === "answered")  break; // already answered, wait for reveal
+      currentQId    = qId;
+      selectedIndex = -1;
+      correctIndex  = -1;
+      currentOptions = pl.options || [];
+      timerTotal    = pl.timer_seconds || 20;
+      timerLeft     = timerTotal;
+      totalQs       = pl.total_questions || totalQs;
+
+      // Update stored question list
+      const qIdx = allQuestions.findIndex(q => q.id === qId);
+      const qEntry = { id: qId, text: pl.question_text || "", options: currentOptions, answerIndex: -1 };
+      if (qIdx >= 0) allQuestions[qIdx] = { ...allQuestions[qIdx], ...qEntry };
+      else allQuestions.push(qEntry);
+
+      renderQuestion(pl);
+      showScreen("question");
+      startCountdown();
+      break;
+    }
+
+    case "reveal": {
+      correctIndex = pl.answer_index ?? -1;
+      const revQId = pl.question_id || "";
+
+      // Update stored question with revealed answer
+      const qi = allQuestions.findIndex(q => q.id === revQId);
+      if (qi >= 0) allQuestions[qi].answerIndex = correctIndex;
+
+      // Update score
+      const myAns = myAnswers[revQId];
+      if (myAns !== undefined && myAns === correctIndex) myScore++;
+
+      stopCountdown();
+      renderReveal();
+      showScreen("reveal");
+      break;
+    }
+
+    case "leaderboard":
+      stopPolling();
+      stopCountdown();
+      leaderboard = pl.leaderboard || [];
+      renderLeaderboard();
+      showScreen("leaderboard");
+      break;
+
+    case "ended":
+      stopPolling();
+      stopCountdown();
+      showScreen("ended");
+      break;
+  }
+}
+
+// ── Countdown timer ────────────────────────────────────────────────────────
+function startCountdown() {
+  stopCountdown();
+  renderTimer();
+  countdownTimer = setInterval(() => {
+    timerLeft--;
+    renderTimer();
+    if (timerLeft <= 0) {
+      stopCountdown();
+      if (phase === "question") {
+        // Time's up — mark as no answer
+        selectedIndex = -1;
+        showAnsweredScreen(false, true);
+      }
+    }
+  }, 1000);
+}
+
+function stopCountdown() {
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+}
+
+function renderTimer() {
+  const pct = timerTotal > 0 ? timerLeft / timerTotal : 0;
+  const bar  = document.getElementById("timer-bar");
+  const num  = document.getElementById("timer-num");
+  bar.style.width = (pct * 100) + "%";
+  bar.style.background = pct > 0.5 ? "var(--green)" : pct > 0.25 ? "var(--amber)" : "var(--red)";
+  num.style.color      = pct > 0.5 ? "var(--green)" : pct > 0.25 ? "var(--amber)" : "var(--red)";
+  num.textContent = timerLeft + "s";
+}
+
+// ── Render question ────────────────────────────────────────────────────────
+function renderQuestion(pl) {
+  const qNum = (pl.question_index ?? 0) + 1;
+  document.getElementById("q-progress").textContent = `Q${qNum}/${totalQs}`;
+  document.getElementById("q-text").textContent = pl.question_text || "";
+
+  const list = document.getElementById("options-list");
+  list.innerHTML = "";
+  const colors = ["color-0","color-1","color-2","color-3","color-4"];
+  currentOptions.forEach((opt, i) => {
+    const btn = document.createElement("button");
+    btn.className = `opt-btn ${colors[i] || "color-0"}`;
+    btn.innerHTML = `<span class="opt-letter">${String.fromCharCode(65+i)}</span><span class="opt-text">${escHtml(opt)}</span>`;
+    btn.onclick = () => selectAnswer(i);
+    list.appendChild(btn);
+  });
+}
+
+// ── Select answer ──────────────────────────────────────────────────────────
+async function selectAnswer(idx) {
+  if (selectedIndex !== -1) return; // already answered
+  selectedIndex = idx;
+  myAnswers[currentQId] = idx;
+  stopCountdown();
+  showAnsweredScreen(true, false);
+
+  // Submit to Supabase (best-effort)
+  try {
+    await sbPost(TBL_ANSWERS, {
+      session_id:   sessionId,
+      question_id:  currentQId,
+      nickname:     nickname,
+      answer_index: idx,
+      correct:      false  // host will reconcile; we don't know the answer yet
+    });
+  } catch(e) { console.warn("Submit answer failed:", e.message); }
+}
+
+function showAnsweredScreen(answered, timeout) {
+  const icon = document.getElementById("answered-icon");
+  const msg  = document.getElementById("answered-msg");
+  const sub  = document.getElementById("answered-sub");
+  if (timeout) {
+    icon.textContent = "⏱️"; msg.textContent = "Time's up!";
+  } else {
+    icon.textContent = "✅"; msg.textContent = "Answer submitted!";
+  }
+  sub.textContent = "Waiting for the host to reveal the answer…";
+  showScreen("answered");
+}
+
+// ── Render reveal ──────────────────────────────────────────────────────────
+function renderReveal() {
+  const myAns    = myAnswers[currentQId] ?? -1;
+  const isCorrect = myAns !== -1 && myAns === correctIndex;
+  const noAnswer  = myAns === -1;
+
+  const banner = document.getElementById("result-banner");
+  const emoji  = document.getElementById("result-emoji");
+  const label  = document.getElementById("result-label");
+
+  if (isCorrect) {
+    banner.className = "result-banner correct-bg";
+    emoji.textContent = "🎉"; label.textContent = "Correct!";
+    label.style.color = "var(--green)";
+  } else if (noAnswer) {
+    banner.className = "result-banner skip-bg";
+    emoji.textContent = "⏱️"; label.textContent = "No answer";
+    label.style.color = "var(--sub)";
+  } else {
+    banner.className = "result-banner wrong-bg";
+    emoji.textContent = "😬"; label.textContent = "Wrong!";
+    label.style.color = "var(--red)";
+  }
+
+  const ansBox  = document.getElementById("correct-answer-box");
+  const ansText = document.getElementById("correct-answer-text");
+  if (correctIndex >= 0 && currentOptions[correctIndex]) {
+    ansText.textContent = String.fromCharCode(65 + correctIndex) + ". " + currentOptions[correctIndex];
+    ansBox.style.display = "block";
+  } else {
+    ansBox.style.display = "none";
+  }
+}
+
+// ── Render leaderboard ─────────────────────────────────────────────────────
+function renderLeaderboard() {
+  const medals = ["🥇","🥈","🥉"];
+  const list   = document.getElementById("lb-list");
+  list.innerHTML = "";
+
+  let myRank = -1;
+  leaderboard.forEach((entry, idx) => {
+    if (entry.nickname === nickname) myRank = idx + 1;
+    const isMe = entry.nickname === nickname;
+    const div  = document.createElement("div");
+    div.className = "lb-row" + (isMe ? " me" : "");
+    const medal = idx < 3 ? `<span class="lb-medal">${medals[idx]}</span>` : `<span class="lb-rank">#${idx+1}</span>`;
+    div.innerHTML = `
+      ${medal}
+      <div class="lb-avatar">${escHtml(entry.nickname.charAt(0).toUpperCase())}</div>
+      <span class="lb-name">${escHtml(entry.nickname)}${isMe ? " <span style='color:var(--primary);font-size:12px'>(You)</span>" : ""}</span>
+      <span class="lb-score">${entry.score}/${entry.total}</span>
+    `;
+    list.appendChild(div);
+  });
+
+  // My rank summary
+  const myEntry = leaderboard.find(e => e.nickname === nickname);
+  const rankEl  = document.getElementById("lb-my-rank");
+  if (myEntry) {
+    const rankEmoji = myRank === 1 ? "🥇" : myRank === 2 ? "🥈" : myRank === 3 ? "🥉" : `#${myRank}`;
+    rankEl.textContent = `You scored ${myEntry.score}/${myEntry.total} — ${rankEmoji}`;
+  }
+
+  // Download section
+  const dlSec = document.getElementById("download-section");
+  dlSec.style.display = allowDownload ? "flex" : "none";
+}
+
+// ── Download Q&A + score ───────────────────────────────────────────────────
+function downloadResults() {
+  const lines = [];
+  lines.push("╔══════════════════════════════════════════╗");
+  lines.push(`  Quiz: ${setName}`);
+  lines.push(`  Participant: ${nickname}`);
+  lines.push(`  Score: ${myScore} / ${totalQs}`);
+  lines.push("╚══════════════════════════════════════════╝");
+  lines.push("");
+
+  allQuestions.forEach((q, i) => {
+    lines.push(`Q${i+1}. ${q.text}`);
+    (q.options || []).forEach((opt, oi) => {
+      const letter    = String.fromCharCode(65 + oi);
+      const myAns     = myAnswers[q.id];
+      const isMyAns   = myAns === oi;
+      const isCorrect = q.answerIndex === oi;
+      let marker = "   ";
+      if (isMyAns && isCorrect)  marker = "✅ ";
+      else if (isMyAns)          marker = "❌ ";
+      else if (isCorrect)        marker = "✔  ";
+      lines.push(`  ${marker}${letter}. ${opt}`);
+    });
+    if (q.answerIndex >= 0 && q.options[q.answerIndex]) {
+      lines.push(`  → Correct: ${String.fromCharCode(65+q.answerIndex)}. ${q.options[q.answerIndex]}`);
+    }
+    lines.push("");
+  });
+
+  const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `jotly_quiz_${sessionId}_${nickname}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Utility ────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;");
+}
+
+// ── Enter key on nickname field ────────────────────────────────────────────
+document.getElementById("nickname-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") joinQuiz();
+});
+</script>
+</body>
+</html>
