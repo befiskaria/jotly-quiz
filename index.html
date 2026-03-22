@@ -172,15 +172,17 @@
 
 <script>
 // ── Firebase config ────────────────────────────────────────────────────────
-const firebaseConfig = {
-  databaseURL: "https://befiscloudnotes-default-rtdb.firebaseio.com"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-
-// ── Constants ──────────────────────────────────────────────────────────────
+// Reads ?db= from the URL so hosts using their own Firebase project work seamlessly.
+// Falls back to the shared Jotly database if no db param is present.
+const SHARED_DB_URL = "https://befiscloudnotes-default-rtdb.firebaseio.com";
 const params    = new URLSearchParams(window.location.search);
 const sessionId = (params.get("session") || "").toUpperCase().trim();
+const customDb  = params.get("db") ? decodeURIComponent(params.get("db")) : "";
+const DB_URL    = (customDb && customDb.includes("firebaseio.com")) ? customDb : SHARED_DB_URL;
+
+const firebaseConfig = { databaseURL: DB_URL };
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
 // ── State ──────────────────────────────────────────────────────────────────
 let nickname       = "";
