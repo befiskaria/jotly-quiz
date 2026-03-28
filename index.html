@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>Jotly Quiz</title>
+<title>JotSpace Quiz</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -71,6 +71,7 @@
   .cover-card { background: rgba(124,106,247,.12); border: 1px solid rgba(124,106,247,.25); border-radius: 20px; padding: 28px; text-align: center; }
   .score-row { display: flex; justify-content: center; gap: 6px; align-items: center; font-size: 13px; color: var(--sub); margin-top: 6px; }
   .score-val { color: var(--primary); font-weight: 700; font-size: 15px; }
+  .api-info { font-size: 11px; color: var(--sub); text-align: center; margin-top: 4px; opacity: 0.6; }
 </style>
 </head>
 <body>
@@ -88,6 +89,7 @@
       <div id="cover-error" class="error-msg" style="display:none"></div>
       <button class="btn btn-primary" id="join-btn" onclick="joinQuiz()">Join Quiz</button>
     </div>
+    <p class="api-info" id="api-info"></p>
   </div>
 
   <div id="screen-lobby" class="screen">
@@ -166,28 +168,29 @@
   </div>
 </div>
 
-<!-- Firebase JS SDK (modular v10 compat shim — works without bundler) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-
 <script>
-// ── Firebase config ────────────────────────────────────────────────────────
-// Reads ?db= from the URL so hosts using their own Firebase project work seamlessly.
-// Falls back to the shared Jotly database if no db param is present.
-const SHARED_DB_URL = "https://befiscloudnotes-default-rtdb.firebaseio.com";
+// ─────────────────────────────────────────────────────────────────────────────
+// Jotly Quiz — Browser Client (Cloudflare Workers + D1 backend)
+// No Firebase. Uses REST polling every 2 seconds — matches Android QuizJoinScreen.
+//
+// URL params:
+//   ?session=ABCDEF          — 6-char session code (required)
+//   ?api=https://...         — custom Cloudflare Worker URL (optional)
+//                              falls back to Jotly shared worker
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SHARED_WORKER_URL = "https://quiz-hub-api.befiskaria.workers.dev";
 const params    = new URLSearchParams(window.location.search);
 const sessionId = (params.get("session") || "").toUpperCase().trim();
-const customDb  = params.get("db") ? decodeURIComponent(params.get("db")) : "";
-const DB_URL    = (customDb && customDb.includes("firebaseio.com")) ? customDb : SHARED_DB_URL;
 
-const firebaseConfig = { databaseURL: DB_URL };
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+// Support both ?api= (new Cloudflare) and ?db= (old Firebase — ignored gracefully)
+const customApi  = params.get("api") ? decodeURIComponent(params.get("api")).replace(/\/$/, "") : "";
+const WORKER_URL = customApi || SHARED_WORKER_URL;
 
-// ── State ──────────────────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────────
 let nickname       = "";
 let phase          = "cover";
-let sessionRef     = null;       // Firebase listener ref
+let pollInterval   = null;   // setInterval handle for session polling
 let countdownTimer = null;
 let timerTotal     = 20;
 let timerLeft      = 0;
@@ -195,8 +198,8 @@ let currentQId     = "";
 let currentOptions = [];
 let correctIndex   = -1;
 let selectedIndex  = -1;
-let allQuestions   = [];         // [{id, text, options[], answerIndex}]
-let myAnswers      = {};
+let allQuestions   = [];     // [{id, text, options[], answerIndex}]
+let myAnswers      = {};     // questionId → answerIndex
 let myScore        = 0;
 let streak         = 0;
 let lastCorrect    = false;
@@ -207,24 +210,43 @@ let hostName       = "Host";
 let setName        = "Quiz";
 let leaderboard    = [];
 
-// ── Initialise ────────────────────────────────────────────────────────────
+// ── Initialise UI ─────────────────────────────────────────────────────────────
 if (!sessionId) {
   document.getElementById("cover-code").textContent = "No session code in URL.";
   document.getElementById("join-btn").disabled = true;
 } else {
   document.getElementById("cover-code").textContent = "Session: " + sessionId;
 }
+// Show which backend is being used (helpful for debugging)
+document.getElementById("api-info").textContent =
+  customApi ? "Using custom API: " + customApi : "";
 
-// ── Screen management ──────────────────────────────────────────────────────
+// ── Screen management ─────────────────────────────────────────────────────────
 function showScreen(name) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById("screen-" + name).classList.add("active");
   phase = name;
 }
-
 function showError(el, msg) { el.textContent = msg; el.style.display = "block"; }
 
-// ── Join quiz ──────────────────────────────────────────────────────────────
+// ── Cloudflare REST helpers ───────────────────────────────────────────────────
+async function cfGet(path) {
+  const res = await fetch(`${WORKER_URL}/${path}`, {
+    headers: { "Content-Type": "application/json" }
+  });
+  return res.json();
+}
+
+async function cfPost(path, body) {
+  const res = await fetch(`${WORKER_URL}/${path}`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(body)
+  });
+  return res.json();
+}
+
+// ── Join quiz ─────────────────────────────────────────────────────────────────
 async function joinQuiz() {
   const input = document.getElementById("nickname-input");
   const err   = document.getElementById("cover-error");
@@ -234,35 +256,46 @@ async function joinQuiz() {
   const btn = document.getElementById("join-btn");
   btn.disabled = true; btn.textContent = "Joining…"; err.style.display = "none";
 
-  try {
-    // Check session exists
-    const snap = await db.ref(`quiz/sessions/${sessionId}`).get();
-    if (!snap.exists()) { showError(err, "Session not found. Check the code."); btn.disabled = false; btn.textContent = "Join Quiz"; return; }
-    const state = snap.val().state;
-    if (state === "ended") { showError(err, "This quiz has already ended."); btn.disabled = false; btn.textContent = "Join Quiz"; return; }
+  // Retry up to 5 times with backoff — host may still be writing when participant joins
+  const delays = [0, 500, 1000, 2000, 3000];
+  let lastErr = "Session not found. Check the code and try again.";
 
-    const payload = snap.val().payload || {};
-    allowDownload = payload.allow_download || false;
-    setName       = payload.set_name || "Quiz";
-    hostName      = payload.host_name || "Host";
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) await sleep(delays[attempt]);
+    try {
+      const data = await cfPost(`sessions/${sessionId}/join`, { nickname });
 
-    // Register participant — onDisconnect auto-removes
-    const partRef = db.ref(`quiz/participants/${sessionId}/${nickname}`);
-    await partRef.set(true);
-    partRef.onDisconnect().remove();
+      if (data.error) {
+        lastErr = data.error;
+        // "not found" is retryable — host may still be writing the session
+        if (attempt < delays.length - 1 && data.error.toLowerCase().includes("not found")) {
+          btn.textContent = "Looking…"; continue;
+        }
+        showError(err, data.error);
+        btn.disabled = false; btn.textContent = "Join Quiz";
+        return;
+      }
 
-    // Seed question list from lobby payload
-    const qList = payload.question_list || [];
-    allQuestions = qList.map(q => ({ id: q.id, text: q.text, options: q.options || [], answerIndex: -1 }));
+      // Success
+      allowDownload = data.allow_download || false;
+      hostName      = data.host_name || "Host";
+      setName       = data.quiz_name || "Quiz";
 
-    btn.disabled = false;
-    showScreen("lobby");
-    updateLobbyUI();
-    attachSessionListener();
-  } catch(e) {
-    showError(err, "Could not join: " + e.message);
-    btn.disabled = false; btn.textContent = "Join Quiz";
+      btn.disabled = false;
+      showScreen("lobby");
+      updateLobbyUI();
+      startPolling();
+      return;
+
+    } catch (e) {
+      lastErr = e.message && e.message.includes("fetch")
+        ? "No internet connection."
+        : (e.message || "Could not join.");
+    }
   }
+
+  showError(err, lastErr);
+  btn.disabled = false; btn.textContent = "Join Quiz";
 }
 
 function updateLobbyUI() {
@@ -272,120 +305,149 @@ function updateLobbyUI() {
   document.getElementById("lobby-set-name").textContent  = setName;
 }
 
-// ── Firebase real-time listener ────────────────────────────────────────────
-function attachSessionListener() {
-  sessionRef = db.ref(`quiz/sessions/${sessionId}`);
-  sessionRef.on("value", snap => {
-    if (!snap.exists()) return;
-    const { state, payload } = snap.val();
-    handleState(state, payload || {});
-  });
+// ── Cloudflare polling (replaces Firebase real-time listener) ─────────────────
+// Polls /sessions/:id every 2 seconds — same strategy as Android QuizJoinScreen.
+function startPolling() {
+  stopPolling();
+  pollInterval = setInterval(pollSession, 2000);
+  pollSession(); // immediate first poll
 }
 
-function handleState(state, pl) {
-  hostName = pl.host_name || hostName;
+function stopPolling() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+}
+
+async function pollSession() {
+  try {
+    const data = await cfGet(`sessions/${sessionId}`);
+    if (data.error) {
+      // Session gone or ended
+      stopPolling(); stopCountdown();
+      showScreen("ended");
+      return;
+    }
+    handleState(data.state, data);
+  } catch (e) {
+    // Network blip — keep polling, don't crash
+    console.warn("Poll error:", e.message);
+  }
+}
+
+// ── State machine (identical logic to Android QuizJoinScreen) ─────────────────
+function handleState(state, data) {
+  hostName = data.host_name || hostName;
 
   switch (state) {
     case "lobby":
-      allowDownload = pl.allow_download || false;
-      setName       = pl.set_name || setName;
-      if (pl.question_list && allQuestions.length === 0) {
-        allQuestions = pl.question_list.map(q => ({ id: q.id, text: q.text, options: q.options || [], answerIndex: -1 }));
-      }
+      allowDownload = data.allow_download || false;
+      setName = data.quiz_name || setName;
       updateLobbyUI();
       if (phase !== "lobby") showScreen("lobby");
       break;
 
     case "question": {
-      const qId = pl.question_id || "";
+      // Worker stores current question in payload field
+      const pl = data.payload || data;  // support both flat and nested
+      const qId = pl.question_id || data.question_id || "";
       if (qId === currentQId && (phase === "question" || phase === "answered")) break;
       currentQId    = qId;
       selectedIndex = -1; correctIndex = -1;
-      currentOptions = pl.options || [];
-      timerTotal    = pl.timer_seconds || 20;
+      currentOptions = pl.options || data.options || [];
+      timerTotal    = pl.timer_seconds || data.timer_seconds || 20;
       timerLeft     = timerTotal;
-      totalQs       = pl.total_questions || totalQs;
-      // Update question list
-      const entry = { id: qId, text: pl.question_text || "", options: currentOptions, answerIndex: -1 };
+      totalQs       = pl.total_questions || data.total_questions || totalQs;
+      const entry   = {
+        id: qId,
+        text: pl.question_text || data.question_text || "",
+        options: currentOptions,
+        answerIndex: -1
+      };
       const qi = allQuestions.findIndex(q => q.id === qId);
       if (qi >= 0) allQuestions[qi] = { ...allQuestions[qi], ...entry };
       else allQuestions.push(entry);
-      renderQuestion(pl);
+      renderQuestion(pl.question_index ?? data.question_index ?? 0,
+                     pl.question_text  || data.question_text || "");
       showScreen("question");
       startCountdown();
       break;
     }
 
     case "reveal": {
-      correctIndex = pl.answer_index ?? -1;
-      const revQId = pl.question_id || "";
-      // Update stored answer index
+      const pl = data.payload || data;
+      correctIndex = pl.answer_index ?? data.answer_index ?? -1;
+      const revQId = pl.question_id || data.question_id || currentQId;
       const qi = allQuestions.findIndex(q => q.id === revQId);
       if (qi >= 0) allQuestions[qi].answerIndex = correctIndex;
-      // Score — guard against double-scoring
+      // Score — guard against double-counting
       if (!scoredQs.has(revQId)) {
         scoredQs.add(revQId);
         const myAns = myAnswers[revQId];
         if (myAns !== undefined && myAns === correctIndex) {
-          myScore++;
-          streak = lastCorrect ? streak + 1 : 1;
-          lastCorrect = true;
-        } else {
-          streak = 0; lastCorrect = false;
-        }
+          myScore++; streak = lastCorrect ? streak + 1 : 1; lastCorrect = true;
+        } else { streak = 0; lastCorrect = false; }
       }
+      // Populate currentOptions from stored question if missing
+      if (!currentOptions.length) {
+        const stored = allQuestions.find(q => q.id === revQId);
+        if (stored) currentOptions = stored.options || [];
+      }
+      const revOptions = pl.options || data.options || currentOptions;
+      if (revOptions.length) currentOptions = revOptions;
       stopCountdown();
       renderReveal();
       showScreen("reveal");
       break;
     }
 
-    case "leaderboard":
+    case "leaderboard": {
+      const pl = data.payload || data;
       stopCountdown();
-      leaderboard = pl.leaderboard || [];
+      leaderboard = pl.leaderboard || data.leaderboard || [];
       renderLeaderboard();
       showScreen("leaderboard");
       break;
+    }
 
     case "ended":
-      stopCountdown();
-      if (sessionRef) { sessionRef.off(); sessionRef = null; }
+      stopCountdown(); stopPolling();
       showScreen("ended");
       break;
   }
 }
 
-// ── Timer ──────────────────────────────────────────────────────────────────
+// ── Timer ─────────────────────────────────────────────────────────────────────
 function startCountdown() {
-  stopCountdown();
-  renderTimer();
+  stopCountdown(); renderTimer();
   countdownTimer = setInterval(() => {
     timerLeft = Math.max(0, timerLeft - 1);
     renderTimer();
     if (timerLeft <= 0) {
       stopCountdown();
-      if (phase === "question") showScreen("answered");
+      if (phase === "question") {
+        document.getElementById("answered-icon").textContent = "⏱️";
+        document.getElementById("answered-msg").textContent  = "Time's up!";
+        showScreen("answered");
+      }
     }
   }, 1000);
 }
 function stopCountdown() { if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; } }
 
 function renderTimer() {
-  const pct  = timerTotal > 0 ? timerLeft / timerTotal : 0;
+  const pct = timerTotal > 0 ? timerLeft / timerTotal : 0;
   const bar  = document.getElementById("timer-bar");
   const num  = document.getElementById("timer-num");
   if (!bar) return;
-  bar.style.width      = (pct * 100) + "%";
+  bar.style.width = (pct * 100) + "%";
   const col = pct > 0.5 ? "var(--green)" : pct > 0.25 ? "var(--amber)" : "var(--red)";
   bar.style.background = col;
   if (num) { num.style.color = col; num.textContent = timerLeft + "s"; }
 }
 
-// ── Render question ────────────────────────────────────────────────────────
-function renderQuestion(pl) {
-  const qNum = (pl.question_index ?? 0) + 1;
-  document.getElementById("q-progress").textContent = `Q${qNum}/${totalQs}`;
-  document.getElementById("q-text").textContent = pl.question_text || "";
+// ── Render question ───────────────────────────────────────────────────────────
+function renderQuestion(qIndex, qText) {
+  document.getElementById("q-progress").textContent = `Q${qIndex + 1}/${totalQs}`;
+  document.getElementById("q-text").textContent = qText;
   const list = document.getElementById("options-list");
   list.innerHTML = "";
   const colors = ["color-0","color-1","color-2","color-3","color-4"];
@@ -398,7 +460,7 @@ function renderQuestion(pl) {
   });
 }
 
-// ── Select answer ──────────────────────────────────────────────────────────
+// ── Select answer ─────────────────────────────────────────────────────────────
 async function selectAnswer(idx) {
   if (selectedIndex !== -1 || phase !== "question") return;
   selectedIndex = idx;
@@ -407,16 +469,17 @@ async function selectAnswer(idx) {
   document.getElementById("answered-icon").textContent = "✅";
   document.getElementById("answered-msg").textContent  = "Answer submitted!";
   showScreen("answered");
-  // Write to Firebase
+  // POST answer to Cloudflare Worker
   try {
-    await db.ref(`quiz/answers/${sessionId}/${currentQId}/${nickname}`).set({
-      answer_index: idx,
-      answered_at:  firebase.database.ServerValue.TIMESTAMP
+    await cfPost(`sessions/${sessionId}/answer`, {
+      question_id:  currentQId,
+      nickname:     nickname,
+      answer_index: idx
     });
-  } catch(e) { console.warn("Answer write failed:", e.message); }
+  } catch(e) { console.warn("Answer submit failed:", e.message); }
 }
 
-// ── Reveal ─────────────────────────────────────────────────────────────────
+// ── Reveal ────────────────────────────────────────────────────────────────────
 function renderReveal() {
   const myAns     = myAnswers[currentQId] ?? -1;
   const isCorrect = myAns !== -1 && myAns === correctIndex;
@@ -434,28 +497,21 @@ function renderReveal() {
     banner.className = "result-banner wrong-bg"; emoji.textContent = "😬";
     label.textContent = "Wrong!"; label.style.color = "var(--red)";
   }
-  // Streak badge
   const streakDiv = document.getElementById("streak-display");
   if (isCorrect && streak >= 3) {
     streakDiv.style.display = "flex";
     document.getElementById("streak-text").textContent = `🔥 ${streak} in a row!`;
-  } else {
-    streakDiv.style.display = "none";
-  }
-  // Running score
+  } else { streakDiv.style.display = "none"; }
   document.getElementById("running-score").textContent = myScore;
-  // Correct answer box
   const ansBox  = document.getElementById("correct-answer-box");
   const ansText = document.getElementById("correct-answer-text");
   if (correctIndex >= 0 && currentOptions[correctIndex]) {
     ansText.textContent = String.fromCharCode(65 + correctIndex) + ". " + currentOptions[correctIndex];
     ansBox.style.display = "block";
-  } else {
-    ansBox.style.display = "none";
-  }
+  } else { ansBox.style.display = "none"; }
 }
 
-// ── Leaderboard ────────────────────────────────────────────────────────────
+// ── Leaderboard ───────────────────────────────────────────────────────────────
 function renderLeaderboard() {
   const medals = ["🥇","🥈","🥉"];
   const list   = document.getElementById("lb-list");
@@ -466,7 +522,9 @@ function renderLeaderboard() {
     const isMe = entry.nickname === nickname;
     const div  = document.createElement("div");
     div.className = "lb-row" + (isMe ? " me" : "");
-    const rankEl = idx < 3 ? `<span class="lb-medal">${medals[idx]}</span>` : `<span class="lb-rank">#${idx+1}</span>`;
+    const rankEl = idx < 3
+      ? `<span class="lb-medal">${medals[idx]}</span>`
+      : `<span class="lb-rank">#${idx+1}</span>`;
     div.innerHTML = `${rankEl}<div class="lb-avatar">${escHtml(entry.nickname.charAt(0).toUpperCase())}</div><span class="lb-name">${escHtml(entry.nickname)}${isMe ? ' <span style="color:var(--primary);font-size:12px">(You)</span>' : ""}</span><span class="lb-score">${entry.score}/${entry.total}</span>`;
     list.appendChild(div);
   });
@@ -476,11 +534,10 @@ function renderLeaderboard() {
     const em = myRank === 1 ? "🥇" : myRank === 2 ? "🥈" : myRank === 3 ? "🥉" : `#${myRank}`;
     rankEl.textContent = `You scored ${myEntry.score}/${myEntry.total} — ${em}`;
   }
-  const dlSec = document.getElementById("download-section");
-  dlSec.style.display = allowDownload ? "flex" : "none";
+  document.getElementById("download-section").style.display = allowDownload ? "flex" : "none";
 }
 
-// ── Download ───────────────────────────────────────────────────────────────
+// ── Download ──────────────────────────────────────────────────────────────────
 function downloadResults() {
   const lines = [];
   lines.push("╔══════════════════════════════════════════╗");
@@ -492,8 +549,7 @@ function downloadResults() {
     lines.push(`Q${i+1}. ${q.text}`);
     (q.options || []).forEach((opt, oi) => {
       const letter  = String.fromCharCode(65 + oi);
-      const myAns   = myAnswers[q.id];
-      const isMyAns = myAns === oi;
+      const isMyAns = myAnswers[q.id] === oi;
       const isRight = q.answerIndex === oi;
       let m = "   ";
       if (isMyAns && isRight) m = "✅ "; else if (isMyAns) m = "❌ "; else if (isRight) m = "✔  ";
@@ -510,10 +566,12 @@ function downloadResults() {
   URL.revokeObjectURL(url);
 }
 
-// ── Util ───────────────────────────────────────────────────────────────────
+// ── Util ──────────────────────────────────────────────────────────────────────
 function escHtml(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
 document.getElementById("nickname-input").addEventListener("keydown", e => {
   if (e.key === "Enter") joinQuiz();
 });
