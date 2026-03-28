@@ -376,14 +376,16 @@ function handleState(state, data) {
       if (!qText || currentOptions.length === 0) {
         // Show diagnostic info so we can see what the Worker returned
         const debugStr = JSON.stringify({
-          state:          data.state,
-          question_text:  data.question_text,
-          options:        data.options,
-          payload_keys:   data.payload ? Object.keys(data.payload) : "no payload",
-          pl_qtext:       pl.question_text,
-          pl_opts:        pl.options,
-          question_index: data.question_index,
-          total_q:        data.total_questions,
+          state:              data.state,
+          question_text:      data.question_text,
+          options:            data.options,
+          payload_keys:       data.payload ? Object.keys(data.payload) : "no payload",
+          pl_qtext:           pl.question_text,
+          pl_opts:            pl.options,
+          question_index:     data.question_index,
+          total_q:            data.total_questions,
+          _dbg_empty:         data._debug_payload_empty,
+          _dbg_raw:           data._debug_raw_payload,
         }, null, 2);
         console.warn("Incomplete payload:", debugStr);
         const dbg = document.getElementById("debug-panel");
