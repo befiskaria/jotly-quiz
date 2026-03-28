@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>JotSpace Quiz</title>
+<title>Jotly Quiz</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -395,11 +395,27 @@ function handleState(state, data) {
     }
 
     case "reveal": {
-      const pl = data.payload || data;
+      const pl = (data.payload && typeof data.payload === "object") ? data.payload : {};
       correctIndex = pl.answer_index ?? data.answer_index ?? -1;
       const revQId = pl.question_id || data.question_id || currentQId;
+      currentQId = revQId;  // keep in sync
+
+      // Get options — try payload, then top-level, then stored question, then current
+      const revOpts = pl.options || data.options || [];
+      if (Array.isArray(revOpts) && revOpts.length > 0) {
+        currentOptions = revOpts;
+      } else if (!currentOptions.length) {
+        const stored = allQuestions.find(q => q.id === revQId);
+        if (stored && stored.options.length > 0) currentOptions = stored.options;
+      }
+
+      // Update stored question with correct answer
       const qi = allQuestions.findIndex(q => q.id === revQId);
-      if (qi >= 0) allQuestions[qi].answerIndex = correctIndex;
+      if (qi >= 0) {
+        allQuestions[qi].answerIndex = correctIndex;
+        if (currentOptions.length) allQuestions[qi].options = currentOptions;
+      }
+
       // Score — guard against double-counting
       if (!scoredQs.has(revQId)) {
         scoredQs.add(revQId);
@@ -408,13 +424,6 @@ function handleState(state, data) {
           myScore++; streak = lastCorrect ? streak + 1 : 1; lastCorrect = true;
         } else { streak = 0; lastCorrect = false; }
       }
-      // Populate currentOptions from stored question if missing
-      if (!currentOptions.length) {
-        const stored = allQuestions.find(q => q.id === revQId);
-        if (stored) currentOptions = stored.options || [];
-      }
-      const revOptions = pl.options || data.options || currentOptions;
-      if (revOptions.length) currentOptions = revOptions;
       stopCountdown();
       renderReveal();
       showScreen("reveal");
