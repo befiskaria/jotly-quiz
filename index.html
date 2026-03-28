@@ -118,6 +118,8 @@
     </div>
     <div class="card"><p id="q-text" style="font-size:18px;font-weight:600;line-height:1.45"></p></div>
     <div class="options" id="options-list"></div>
+    <!-- Debug panel — remove after fixing -->
+    <div id="debug-panel" style="display:none;background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:10px;margin-top:8px;font-size:10px;color:#aaa;word-break:break-all;max-height:200px;overflow-y:auto"></div>
   </div>
 
   <div id="screen-answered" class="screen">
@@ -372,21 +374,33 @@ function handleState(state, data) {
       else allQuestions.push(entry);
 
       if (!qText || currentOptions.length === 0) {
-        // Payload incomplete — show a diagnostic card so user isn't staring at black screen
-        console.warn("Incomplete question payload:", JSON.stringify(data).slice(0, 500));
-        document.getElementById("q-text").textContent =
-          qText || "⏳ Loading question… (refreshing)";
+        // Show diagnostic info so we can see what the Worker returned
+        const debugStr = JSON.stringify({
+          state:          data.state,
+          question_text:  data.question_text,
+          options:        data.options,
+          payload_keys:   data.payload ? Object.keys(data.payload) : "no payload",
+          pl_qtext:       pl.question_text,
+          pl_opts:        pl.options,
+          question_index: data.question_index,
+          total_q:        data.total_questions,
+        }, null, 2);
+        console.warn("Incomplete payload:", debugStr);
+        const dbg = document.getElementById("debug-panel");
+        if (dbg) { dbg.style.display = "block"; dbg.textContent = debugStr; }
+
+        document.getElementById("q-text").textContent = qText || "⏳ Loading question…";
         document.getElementById("q-progress").textContent = `Q${qIndex + 1}/${totalQs}`;
         document.getElementById("options-list").innerHTML =
-          currentOptions.length === 0
-            ? "<p style='color:var(--sub);padding:8px'>Waiting for options…</p>"
-            : "";
+          "<p style='color:var(--sub);padding:8px'>Waiting for options…</p>";
         showScreen("question");
         startCountdown();
-        // Poll again immediately in 1s to get complete payload
         setTimeout(pollSession, 1000);
         break;
       }
+      // Hide debug panel when we have real data
+      const dbgOk = document.getElementById("debug-panel");
+      if (dbgOk) dbgOk.style.display = "none";
 
       renderQuestion(qIndex, qText);
       showScreen("question");
