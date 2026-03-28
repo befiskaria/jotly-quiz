@@ -355,7 +355,7 @@ function handleState(state, data) {
       currentOptions = pl.options || data.options || [];
       timerTotal    = pl.timer_seconds || data.timer_seconds || 20;
       timerLeft     = timerTotal;
-      totalQs       = pl.total_questions || data.total_questions || totalQs;
+      totalQs       = pl.total_questions ?? data.total_questions ?? totalQs;
       const entry   = {
         id: qId,
         text: pl.question_text || data.question_text || "",
@@ -365,8 +365,11 @@ function handleState(state, data) {
       const qi = allQuestions.findIndex(q => q.id === qId);
       if (qi >= 0) allQuestions[qi] = { ...allQuestions[qi], ...entry };
       else allQuestions.push(entry);
-      renderQuestion(pl.question_index ?? data.question_index ?? 0,
-                     pl.question_text  || data.question_text || "");
+      // question_index: check payload first, then top-level session fields
+      const qIndex = pl.question_index ?? data.question_index ?? 0;
+      const qText  = pl.question_text  || data.question_text  || "";
+      if (!qText) { console.warn("No question_text in state payload"); }
+      renderQuestion(qIndex, qText);
       showScreen("question");
       startCountdown();
       break;
