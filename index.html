@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>Jotly Quiz</title>
+<title>JotSpace Quiz</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -346,29 +346,48 @@ function handleState(state, data) {
       break;
 
     case "question": {
-      // Worker stores current question in payload field
-      const pl = data.payload || data;  // support both flat and nested
+      // Try payload nested, then top-level flat (Worker flattens both)
+      const pl = (data.payload && typeof data.payload === "object") ? data.payload : {};
+
+      // Extract question_id — try every possible location
       const qId = pl.question_id || data.question_id || "";
       if (qId === currentQId && (phase === "question" || phase === "answered")) break;
       currentQId    = qId;
       selectedIndex = -1; correctIndex = -1;
-      currentOptions = pl.options || data.options || [];
-      timerTotal    = pl.timer_seconds || data.timer_seconds || 20;
+
+      // Options: could be in payload or top-level; ensure it's a real array
+      const rawOpts = pl.options || data.options || [];
+      currentOptions = Array.isArray(rawOpts) ? rawOpts : [];
+
+      timerTotal    = pl.timer_seconds    || data.timer_seconds    || 20;
       timerLeft     = timerTotal;
-      totalQs       = pl.total_questions ?? data.total_questions ?? totalQs;
-      const entry   = {
-        id: qId,
-        text: pl.question_text || data.question_text || "",
-        options: currentOptions,
-        answerIndex: -1
-      };
+      totalQs       = pl.total_questions  ?? data.total_questions  ?? totalQs;
+
+      const qIndex  = pl.question_index   ?? data.question_index   ?? 0;
+      const qText   = pl.question_text    || data.question_text    || "";
+
+      const entry = { id: qId, text: qText, options: currentOptions, answerIndex: -1 };
       const qi = allQuestions.findIndex(q => q.id === qId);
       if (qi >= 0) allQuestions[qi] = { ...allQuestions[qi], ...entry };
       else allQuestions.push(entry);
-      // question_index: check payload first, then top-level session fields
-      const qIndex = pl.question_index ?? data.question_index ?? 0;
-      const qText  = pl.question_text  || data.question_text  || "";
-      if (!qText) { console.warn("No question_text in state payload"); }
+
+      if (!qText || currentOptions.length === 0) {
+        // Payload incomplete — show a diagnostic card so user isn't staring at black screen
+        console.warn("Incomplete question payload:", JSON.stringify(data).slice(0, 500));
+        document.getElementById("q-text").textContent =
+          qText || "⏳ Loading question… (refreshing)";
+        document.getElementById("q-progress").textContent = `Q${qIndex + 1}/${totalQs}`;
+        document.getElementById("options-list").innerHTML =
+          currentOptions.length === 0
+            ? "<p style='color:var(--sub);padding:8px'>Waiting for options…</p>"
+            : "";
+        showScreen("question");
+        startCountdown();
+        // Poll again immediately in 1s to get complete payload
+        setTimeout(pollSession, 1000);
+        break;
+      }
+
       renderQuestion(qIndex, qText);
       showScreen("question");
       startCountdown();
