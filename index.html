@@ -3,14 +3,47 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>Jotly Quiz</title>
+<title>JotSpace Quiz</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ── Dark theme (default) ─────────────────────────────────────────────── */
   :root {
     --bg: #0f0f13; --surface: #1a1a24; --card: #22222f; --primary: #7c6af7;
     --text: #f0f0f8; --sub: #9090a8; --green: #34c759; --red: #ff453a;
     --amber: #f59e0b; --fire: #ff6b35; --radius: 14px;
+    --border: #333344; --hr: #222233; --spinner-track: #333344;
+    --input-bg: #22222f; --debug-bg: #1a1a2e; --debug-border: #444;
   }
+
+  /* ── Light theme — OS preference ─────────────────────────────────────── */
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f2f2f7; --surface: #ffffff; --card: #f2f2f7; --primary: #6254e8;
+      --text: #1c1c1e; --sub: #6e6e7a; --green: #28a745; --red: #d93025;
+      --amber: #c47d0a; --fire: #e05a1e;
+      --border: #d1d1d6; --hr: #e5e5ea; --spinner-track: #d1d1d6;
+      --input-bg: #f2f2f7; --debug-bg: #e5e5ea; --debug-border: #bbb;
+    }
+  }
+
+  /* ── Explicit override via ?theme=light or ?theme=dark ─────────────────
+     Applied by JS immediately — lets Android pass its own theme setting.  */
+  [data-theme="light"] {
+    --bg: #f2f2f7; --surface: #ffffff; --card: #f2f2f7; --primary: #6254e8;
+    --text: #1c1c1e; --sub: #6e6e7a; --green: #28a745; --red: #d93025;
+    --amber: #c47d0a; --fire: #e05a1e;
+    --border: #d1d1d6; --hr: #e5e5ea; --spinner-track: #d1d1d6;
+    --input-bg: #f2f2f7; --debug-bg: #e5e5ea; --debug-border: #bbb;
+  }
+  [data-theme="dark"] {
+    --bg: #0f0f13; --surface: #1a1a24; --card: #22222f; --primary: #7c6af7;
+    --text: #f0f0f8; --sub: #9090a8; --green: #34c759; --red: #ff453a;
+    --amber: #f59e0b; --fire: #ff6b35;
+    --border: #333344; --hr: #222233; --spinner-track: #333344;
+    --input-bg: #22222f; --debug-bg: #1a1a2e; --debug-border: #444;
+  }
+
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 16px; }
   #app { width: 100%; max-width: 480px; min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; }
   .screen { display: none; flex-direction: column; gap: 16px; }
@@ -20,18 +53,18 @@
   h2 { font-size: 20px; font-weight: 600; }
   .sub { color: var(--sub); font-size: 13px; }
   .center { text-align: center; }
-  input[type="text"] { width: 100%; background: var(--card); border: 1.5px solid #333344; border-radius: 10px; color: var(--text); font-size: 16px; padding: 14px 16px; outline: none; transition: border-color .2s; }
+  input[type="text"] { width: 100%; background: var(--input-bg); border: 1.5px solid var(--border); border-radius: 10px; color: var(--text); font-size: 16px; padding: 14px 16px; outline: none; transition: border-color .2s; }
   input[type="text"]:focus { border-color: var(--primary); }
   input[type="text"]::placeholder { color: var(--sub); }
   .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 16px; border: none; border-radius: var(--radius); font-size: 16px; font-weight: 600; cursor: pointer; transition: opacity .15s, transform .1s; -webkit-tap-highlight-color: transparent; }
   .btn:active { opacity: .8; transform: scale(.98); }
   .btn-primary { background: var(--primary); color: #fff; }
-  .btn-outline { background: transparent; color: var(--sub); border: 1.5px solid #333344; }
+  .btn-outline { background: transparent; color: var(--sub); border: 1.5px solid var(--border); }
   .btn-download { background: var(--green); color: #fff; }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
   .session-code { font-size: 42px; font-weight: 800; letter-spacing: 8px; color: var(--primary); text-align: center; }
   .timer-wrap { display: flex; align-items: center; gap: 10px; }
-  .timer-bar-bg { flex: 1; height: 8px; background: #333344; border-radius: 4px; overflow: hidden; }
+  .timer-bar-bg { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
   .timer-bar { height: 100%; border-radius: 4px; transition: width .9s linear, background-color .3s; background: var(--green); }
   .timer-num { font-size: 15px; font-weight: 700; width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
   .q-progress { font-size: 12px; color: var(--sub); width: 40px; }
@@ -58,9 +91,9 @@
   .dots span:nth-child(2) { animation-delay: .2s; }
   .dots span:nth-child(3) { animation-delay: .4s; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .spinner { width: 40px; height: 40px; border: 3px solid #333344; border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto; }
+  .spinner { width: 40px; height: 40px; border: 3px solid var(--spinner-track); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto; }
   .error-msg { background: rgba(255,69,58,.12); border: 1px solid rgba(255,69,58,.3); border-radius: 10px; padding: 12px 16px; color: var(--red); font-size: 13px; }
-  hr { border: none; border-top: 1px solid #222233; }
+  hr { border: none; border-top: 1px solid var(--hr); }
   .badge { display: inline-flex; align-items: center; background: rgba(124,106,247,.18); color: var(--primary); border-radius: 20px; padding: 4px 12px; font-size: 13px; font-weight: 600; }
   .streak-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,107,53,.15); color: var(--fire); border-radius: 20px; padding: 6px 14px; font-size: 14px; font-weight: 700; }
   .result-banner { border-radius: var(--radius); padding: 20px; text-align: center; }
@@ -80,8 +113,9 @@
   <div id="screen-cover" class="screen active">
     <div class="center">
       <div style="font-size:64px">🧠</div>
-      <h1 style="margin-top:12px">Jotly Quiz</h1>
-      <p class="sub" id="cover-code" style="margin-top:6px"></p>
+      <h1 style="margin-top:12px">JotSpace Quiz</h1>
+      <p class="sub" id="cover-host" style="margin-top:6px"></p>
+      <p class="sub" id="cover-code" style="margin-top:2px"></p>
     </div>
     <div class="card" style="gap:14px;display:flex;flex-direction:column">
       <h2 style="font-size:16px;font-weight:600">Enter your nickname</h2>
@@ -118,8 +152,8 @@
     </div>
     <div class="card"><p id="q-text" style="font-size:18px;font-weight:600;line-height:1.45"></p></div>
     <div class="options" id="options-list"></div>
-    <!-- Debug panel — remove after fixing -->
-    <div id="debug-panel" style="display:none;background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:10px;margin-top:8px;font-size:10px;color:#aaa;word-break:break-all;max-height:200px;overflow-y:auto"></div>
+    <!-- Debug panel — hidden in production, shown only when payload is missing -->
+    <div id="debug-panel" style="display:none;background:var(--debug-bg);border:1px solid var(--debug-border);border-radius:8px;padding:10px;margin-top:8px;font-size:10px;color:var(--sub);word-break:break-all;max-height:200px;overflow-y:auto"></div>
   </div>
 
   <div id="screen-answered" class="screen">
@@ -172,27 +206,39 @@
 
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
-// Jotly Quiz — Browser Client (Cloudflare Workers + D1 backend)
+// JotSpace Quiz — Browser Client (Cloudflare Workers + D1 backend)
 // No Firebase. Uses REST polling every 2 seconds — matches Android QuizJoinScreen.
 //
 // URL params:
 //   ?session=ABCDEF          — 6-char session code (required)
-//   ?api=https://...         — custom Cloudflare Worker URL (optional)
-//                              falls back to Jotly shared worker
+//   ?db=https://...          — host's Cloudflare Worker URL (from QR / share link)
+//   ?api=https://...         — legacy alias for ?db= (both supported)
+//   ?host=John               — host's display name (cosmetic, shown on cover screen)
+//   ?theme=dark|light        — explicit theme override; falls back to OS preference
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ── Theme: apply immediately before first paint ───────────────────────────────
+(function() {
+  const t = new URLSearchParams(window.location.search).get("theme");
+  if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+})();
 
 const SHARED_WORKER_URL = "https://quiz-hub-api.befiskaria.workers.dev";
 const params    = new URLSearchParams(window.location.search);
 const sessionId = (params.get("session") || "").toUpperCase().trim();
 
-// Support both ?api= (new Cloudflare) and ?db= (old Firebase — ignored gracefully)
-const customApi  = params.get("api") ? decodeURIComponent(params.get("api")).replace(/\/$/, "") : "";
-const WORKER_URL = customApi || SHARED_WORKER_URL;
+// Support ?db= (Android QR link), ?api= (legacy), fallback to shared worker
+const rawDb      = params.get("db")  ? decodeURIComponent(params.get("db")).replace(/\/$/, "")  : "";
+const rawApi     = params.get("api") ? decodeURIComponent(params.get("api")).replace(/\/$/, "") : "";
+const WORKER_URL = rawDb || rawApi || SHARED_WORKER_URL;
+
+// ?host= is the host's display name / @username embedded by Android participantUrl()
+const hostParam  = params.get("host") ? decodeURIComponent(params.get("host")) : "";
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let nickname       = "";
 let phase          = "cover";
-let pollInterval   = null;   // setInterval handle for session polling
+let pollInterval   = null;
 let countdownTimer = null;
 let timerTotal     = 20;
 let timerLeft      = 0;
@@ -200,28 +246,34 @@ let currentQId     = "";
 let currentOptions = [];
 let correctIndex   = -1;
 let selectedIndex  = -1;
-let allQuestions   = [];     // [{id, text, options[], answerIndex}]
-let myAnswers      = {};     // questionId → answerIndex
+let allQuestions   = [];
+let myAnswers      = {};
 let myScore        = 0;
 let streak         = 0;
 let lastCorrect    = false;
 let scoredQs       = new Set();
 let totalQs        = 0;
 let allowDownload  = false;
-let hostName       = "Host";
+let hostName       = hostParam || "Host";
 let setName        = "Quiz";
 let leaderboard    = [];
 
-// ── Initialise UI ─────────────────────────────────────────────────────────────
+// ── Initialise cover UI ───────────────────────────────────────────────────────
 if (!sessionId) {
   document.getElementById("cover-code").textContent = "No session code in URL.";
   document.getElementById("join-btn").disabled = true;
 } else {
-  document.getElementById("cover-code").textContent = "Session: " + sessionId;
+  document.getElementById("cover-code").textContent = "Code: " + sessionId;
+}
+// Show host name if provided — "by John" / "by @john"
+if (hostParam) {
+  document.getElementById("cover-host").textContent = "by " + hostParam;
+  document.getElementById("cover-host").style.color = "var(--primary)";
+  document.getElementById("cover-host").style.fontWeight = "600";
 }
 // Show which backend is being used (helpful for debugging)
 document.getElementById("api-info").textContent =
-  customApi ? "Using custom API: " + customApi : "";
+  (rawDb || rawApi) ? "" : "";  // hide for end users; only show if custom
 
 // ── Screen management ─────────────────────────────────────────────────────────
 function showScreen(name) {
@@ -258,7 +310,6 @@ async function joinQuiz() {
   const btn = document.getElementById("join-btn");
   btn.disabled = true; btn.textContent = "Joining…"; err.style.display = "none";
 
-  // Retry up to 5 times with backoff — host may still be writing when participant joins
   const delays = [0, 500, 1000, 2000, 3000];
   let lastErr = "Session not found. Check the code and try again.";
 
@@ -269,7 +320,6 @@ async function joinQuiz() {
 
       if (data.error) {
         lastErr = data.error;
-        // "not found" is retryable — host may still be writing the session
         if (attempt < delays.length - 1 && data.error.toLowerCase().includes("not found")) {
           btn.textContent = "Looking…"; continue;
         }
@@ -278,9 +328,8 @@ async function joinQuiz() {
         return;
       }
 
-      // Success
       allowDownload = data.allow_download || false;
-      hostName      = data.host_name || "Host";
+      hostName      = data.host_name || hostName;
       setName       = data.quiz_name || "Quiz";
 
       btn.disabled = false;
@@ -307,12 +356,11 @@ function updateLobbyUI() {
   document.getElementById("lobby-set-name").textContent  = setName;
 }
 
-// ── Cloudflare polling (replaces Firebase real-time listener) ─────────────────
-// Polls /sessions/:id every 2 seconds — same strategy as Android QuizJoinScreen.
+// ── Cloudflare polling ────────────────────────────────────────────────────────
 function startPolling() {
   stopPolling();
   pollInterval = setInterval(pollSession, 2000);
-  pollSession(); // immediate first poll
+  pollSession();
 }
 
 function stopPolling() {
@@ -323,19 +371,17 @@ async function pollSession() {
   try {
     const data = await cfGet(`sessions/${sessionId}`);
     if (data.error) {
-      // Session gone or ended
       stopPolling(); stopCountdown();
       showScreen("ended");
       return;
     }
     handleState(data.state, data);
   } catch (e) {
-    // Network blip — keep polling, don't crash
     console.warn("Poll error:", e.message);
   }
 }
 
-// ── State machine (identical logic to Android QuizJoinScreen) ─────────────────
+// ── State machine ─────────────────────────────────────────────────────────────
 function handleState(state, data) {
   hostName = data.host_name || hostName;
 
@@ -348,16 +394,12 @@ function handleState(state, data) {
       break;
 
     case "question": {
-      // Try payload nested, then top-level flat (Worker flattens both)
       const pl = (data.payload && typeof data.payload === "object") ? data.payload : {};
-
-      // Extract question_id — try every possible location
       const qId = pl.question_id || data.question_id || "";
       if (qId === currentQId && (phase === "question" || phase === "answered")) break;
       currentQId    = qId;
       selectedIndex = -1; correctIndex = -1;
 
-      // Options: could be in payload or top-level; ensure it's a real array
       const rawOpts = pl.options || data.options || [];
       currentOptions = Array.isArray(rawOpts) ? rawOpts : [];
 
@@ -374,23 +416,15 @@ function handleState(state, data) {
       else allQuestions.push(entry);
 
       if (!qText || currentOptions.length === 0) {
-        // Show diagnostic info so we can see what the Worker returned
         const debugStr = JSON.stringify({
-          state:              data.state,
-          question_text:      data.question_text,
-          options:            data.options,
-          payload_keys:       data.payload ? Object.keys(data.payload) : "no payload",
-          pl_qtext:           pl.question_text,
-          pl_opts:            pl.options,
-          question_index:     data.question_index,
-          total_q:            data.total_questions,
-          _dbg_empty:         data._debug_payload_empty,
-          _dbg_raw:           data._debug_raw_payload,
+          state: data.state, question_text: data.question_text,
+          options: data.options,
+          payload_keys: data.payload ? Object.keys(data.payload) : "no payload",
+          pl_qtext: pl.question_text, pl_opts: pl.options,
         }, null, 2);
         console.warn("Incomplete payload:", debugStr);
         const dbg = document.getElementById("debug-panel");
         if (dbg) { dbg.style.display = "block"; dbg.textContent = debugStr; }
-
         document.getElementById("q-text").textContent = qText || "⏳ Loading question…";
         document.getElementById("q-progress").textContent = `Q${qIndex + 1}/${totalQs}`;
         document.getElementById("options-list").innerHTML =
@@ -400,7 +434,6 @@ function handleState(state, data) {
         setTimeout(pollSession, 1000);
         break;
       }
-      // Hide debug panel when we have real data
       const dbgOk = document.getElementById("debug-panel");
       if (dbgOk) dbgOk.style.display = "none";
 
@@ -414,9 +447,8 @@ function handleState(state, data) {
       const pl = (data.payload && typeof data.payload === "object") ? data.payload : {};
       correctIndex = pl.answer_index ?? data.answer_index ?? -1;
       const revQId = pl.question_id || data.question_id || currentQId;
-      currentQId = revQId;  // keep in sync
+      currentQId = revQId;
 
-      // Get options — try payload, then top-level, then stored question, then current
       const revOpts = pl.options || data.options || [];
       if (Array.isArray(revOpts) && revOpts.length > 0) {
         currentOptions = revOpts;
@@ -425,14 +457,12 @@ function handleState(state, data) {
         if (stored && stored.options.length > 0) currentOptions = stored.options;
       }
 
-      // Update stored question with correct answer
       const qi = allQuestions.findIndex(q => q.id === revQId);
       if (qi >= 0) {
         allQuestions[qi].answerIndex = correctIndex;
         if (currentOptions.length) allQuestions[qi].options = currentOptions;
       }
 
-      // Score — guard against double-counting
       if (!scoredQs.has(revQId)) {
         scoredQs.add(revQId);
         const myAns = myAnswers[revQId];
@@ -516,7 +546,6 @@ async function selectAnswer(idx) {
   document.getElementById("answered-icon").textContent = "✅";
   document.getElementById("answered-msg").textContent  = "Answer submitted!";
   showScreen("answered");
-  // POST answer to Cloudflare Worker
   try {
     await cfPost(`sessions/${sessionId}/answer`, {
       question_id:  currentQId,
@@ -609,7 +638,7 @@ function downloadResults() {
   const blob = new Blob([lines.join("\n")], { type: "text/plain" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
-  a.href = url; a.download = `jotly_quiz_${sessionId}_${nickname}.txt`; a.click();
+  a.href = url; a.download = `jotspace_quiz_${sessionId}_${nickname}.txt`; a.click();
   URL.revokeObjectURL(url);
 }
 
